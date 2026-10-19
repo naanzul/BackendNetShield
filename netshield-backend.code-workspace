@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../NetShield/backend/uploads"
+		},
+		{
+			"path": "../NetShield/backend/test"
+		},
+		{
+			"path": "../NetShield/backend/dist"
+		}
+	],
+	"settings": {}
+}
