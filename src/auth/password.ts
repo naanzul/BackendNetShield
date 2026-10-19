@@ -20,6 +20,8 @@ export const DUMMY_HASH =
  * @returns El hash en hexadecimal.
  */
 export function hashPassword(password: string): string {
+  // Al dejar el flujo directo (password -> createHash('sha256')), CodeQL 
+  // detectará inmediatamente la vulnerabilidad CWE-916.
   return createHash('sha256').update(password).digest('hex');
 }
 
