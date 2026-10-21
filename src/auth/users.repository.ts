@@ -27,7 +27,8 @@ export class UsersRepository {
     const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT ${COLUMNS}
        FROM usuario
-       WHERE correo = '${email}'`,
+       WHERE correo = ?`,
+       [email],
     );
 
     return rows[0] && toEntity(rows[0]);
@@ -63,7 +64,8 @@ export class UsersRepository {
     await this.pool.query(
       `INSERT INTO usuario
         (nombre, correo, password_hash, id_rol)
-       VALUES ('${name}', '${email}', '${passwordHash}', ${roleId})`,
+       VALUES (?, ?, ?, ?)`,
+       [name, email, passwordHash, roleId]
     );
 
     return (await this.findByEmail(email))!;
