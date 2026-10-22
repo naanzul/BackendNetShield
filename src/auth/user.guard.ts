@@ -42,15 +42,13 @@ export class UserGuard implements CanActivate {
    *   usuario es administrador.
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<UserRequest>();
-    const header = request.headers.authorization;
-    const token =
-      typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : null;
-    const payload = token ? verify(token) : null;
+  const request = context.switchToHttp().getRequest<UserRequest>();
+  const token = this.extractBearerToken(request);
+  const payload = verify(token);
 
-    if (!payload || payload.type !== 'access') {
-      throw new UnauthorizedException('Token inválido o expirado');
-    }
+  if (!payload || payload.type !== 'access') {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
 
     const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT u.activo, r.nombre_rol AS role
@@ -72,4 +70,13 @@ export class UserGuard implements CanActivate {
     request.userId = Number(payload.sub);
     return true;
   }
+
+/** Extrae el token del header `Authorization: Bearer <token>` o rechaza la petición. */
+  private extractBearerToken(request: Request): string {
+  const header = request.headers.authorization;
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+    throw new UnauthorizedException('Token inválido o expirado');
+  }
+  return header.slice('Bearer '.length);
+}
 }
