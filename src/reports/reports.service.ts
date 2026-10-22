@@ -21,24 +21,42 @@ import { ReportResponseDto } from './dto/report.response.dto';
 
 const MAX_EVIDENCE = 5;
 const OPEN_STATES = ['pendiente', 'en_revision'];
+const MAX_RAW_LENGTH = 2048;
+const MAX_SITE_LENGTH = 500;
 
 /**
  * "https://www.Banco-Falso.com/login?x=1"
  * -> "banco-falso.com/login"
+ *
+ * Se limita la longitud antes de aplicar cualquier regex y se evitan
+ * las expresiones con coste polinomial (`.*$`, `\/+$`) usando
+ * operaciones lineales.
  */
 export function normalizeSite(raw: string): string {
-  const value = raw
-    .trim()
+  const trimmed = raw.trim();
+  if (trimmed.length > MAX_RAW_LENGTH) {
+    throw new BadRequestException('La URL no es válida');
+  }
+
+  // Regex ancladas al inicio y sin ambigüedad: lineales
+  let value = trimmed
     .toLowerCase()
     .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/[?#].*$/, '')
-    .replace(/\/+$/, '');
+    .replace(/^www\./, '');
+
+  // Cortar en el primer ? o #
+  const cut = value.search(/[?#]/);
+  if (cut !== -1) value = value.slice(0, cut);
+
+  // Quitar "/" finales
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  value = value.slice(0, end);
 
   if (
-    !/^[a-z0-9.-]+(:\d{1,5})?(\/[^\s]*)?$/.test(value) ||
+    value.length > MAX_SITE_LENGTH ||
     !value.includes('.') ||
-    value.length > 500
+    !/^[a-z0-9.-]+(:\d{1,5})?(\/[^\s]*)?$/.test(value)
   ) {
     throw new BadRequestException('La URL no es válida');
   }
@@ -121,8 +139,7 @@ export class ReportsService {
   }
 
   /**
-   * Busca el ID de un estado y muestra información de diagnóstico
-   * para comprobar qué base de datos utiliza NestJS.
+   * Busca el ID de un estado por su nombre.
    */
   private async stateId(
     conn: Pool | PoolConnection,
@@ -134,10 +151,6 @@ export class ReportsService {
         ? 'id_estado_reporte'
         : 'id_estado_notificacion';
 
-    const [dbRows] = await conn.query<RowDataPacket[]>(
-      'SELECT DATABASE() AS base_actual',
-    );
-
     const [rows] = await conn.query<RowDataPacket[]>(
       `SELECT ${column} AS id, nombre_estado
        FROM ${table}
@@ -145,13 +158,6 @@ export class ReportsService {
        LIMIT 1`,
       [name],
     );
-
-    console.log('[DEBUG stateId]', {
-      base: dbRows[0]?.base_actual,
-      tabla: table,
-      estadoBuscado: name,
-      resultado: rows,
-    });
 
     if (!rows.length) {
       throw new BadRequestException(
