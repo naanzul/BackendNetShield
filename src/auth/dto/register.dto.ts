@@ -28,6 +28,7 @@ export class RegisterDto {
     format: 'email',
   })
   @IsEmail()
+  @MaxLength(150) // <-- Refuerzo de seguridad (límite de longitud)
   email!: string;
 
   /** Contrasena en claro. Se hashea antes de guardarla. */
@@ -52,6 +53,7 @@ export class RegisterDto {
     maxLength: 60,
   })
   @IsString()
+  @MaxLength(60) // <-- Refuerzo de seguridad (límite de longitud)
   @Matches(/^([\p{L}][ .'-]*)+$/u, { message: 'País inválido' })
   country!: string;
 }

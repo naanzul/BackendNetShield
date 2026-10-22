@@ -345,6 +345,40 @@ export class ReportsService {
     }
   }
 
+  /**
+   * Versión transaccional de ownedOpen con bloqueo FOR UPDATE 
+   * para evitar condiciones de carrera.
+   */
+  private async ownedOpenTx(
+    conn: PoolConnection,
+    userId: number,
+    id: number,
+  ) {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT e.nombre_estado AS status
+       FROM reporte r
+       INNER JOIN estado_reporte e
+         ON r.id_estado_reporte = e.id_estado_reporte
+       WHERE r.id_reporte = ? AND r.id_usuario = ?
+       FOR UPDATE`,
+      [id, userId],
+    );
+
+    if (!rows.length) {
+      throw new NotFoundException('No existe el reporte');
+    }
+
+    if (
+      !OPEN_STATES.includes(
+        String(rows[0].status).trim().toLowerCase(),
+      )
+    ) {
+      throw new ForbiddenException(
+        'Solo puedes modificar reportes que siguen en revisión',
+      );
+    }
+  }
+
   async update(userId: number, id: number, description: string) {
     await this.ownedOpen(userId, id);
 
@@ -374,6 +408,10 @@ export class ReportsService {
     );
   }
 
+  /**
+   * Agrega una evidencia con transacción y bloqueo FOR UPDATE
+   * para evitar la condición de carrera (Mitigación #15).
+   */
   async addEvidence(
     userId: number,
     id: number,
@@ -383,11 +421,16 @@ export class ReportsService {
       throw new BadRequestException('Archivo inválido o faltante');
     }
 
+    const conn = await this.pool.getConnection();
     try {
-      await this.ownedOpen(userId, id);
+      await conn.beginTransaction();
 
-      const [count] = await this.pool.query<RowDataPacket[]>(
-        'SELECT COUNT(*) AS total FROM evidencia WHERE id_reporte = ?',
+      // 1. Verificamos que el reporte sea del usuario y esté abierto (bloqueado)
+      await this.ownedOpenTx(conn, userId, id);
+
+      // 2. Bloqueamos las filas de evidencia para evitar condición de carrera
+      const [count] = await conn.query<RowDataPacket[]>(
+        'SELECT COUNT(*) AS total FROM evidencia WHERE id_reporte = ? FOR UPDATE',
         [id],
       );
 
@@ -399,13 +442,18 @@ export class ReportsService {
 
       const path = validateImage(file, 'evidence');
 
-      await this.pool.query(
+      await conn.query(
         'INSERT INTO evidencia (id_reporte, ruta_imagen) VALUES (?, ?)',
         [id, path],
       );
+
+      await conn.commit();
     } catch (error) {
+      await conn.rollback();
       removeFile(file.path);
       throw error;
+    } finally {
+      conn.release();
     }
 
     return this.findOne(userId, id);

@@ -82,7 +82,7 @@ export class AuthService {
     const user = await this.users.save(
       dto.name,
       dto.email,
-      hashPassword(dto.password),
+      await hashPassword(dto.password), // <-- AWAIT AGREGADO
     );
     await this.pool.query('UPDATE usuario SET pais = ? WHERE id_usuario = ?', [
       await resolveCountry(this.pool, dto.country),
@@ -112,14 +112,15 @@ export class AuthService {
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.users.findByEmail(dto.email!);
 
+    // MITIGACIÓN: Enumeración de usuarios (Mensaje genérico unificado)
     if (!user) {
-      throw new UnauthorizedException('El usuario no existe');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const valid = verifyPassword(dto.password!, user!.passwordHash!);
+    const valid = await verifyPassword(dto.password!, user!.passwordHash!); // <-- AWAIT AGREGADO
 
     if (!valid) {
-      throw new UnauthorizedException('Password incorrecto');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const account = await this.account(user!.id!);
@@ -134,7 +135,8 @@ export class AuthService {
     const accessToken = sign({ ...claims, type: 'access' }, ACCESS_TTL);
     const refreshToken = sign({ ...claims, type: 'refresh' }, REFRESH_TTL);
 
-    console.log('Login de ' + user!.email + ': ' + accessToken);
+    // MITIGACIÓN: Fuga de token en logs (Línea comentada)
+    // console.log('Login de ' + user!.email + ': ' + accessToken);
 
     return { accessToken, refreshToken };
   }
@@ -239,7 +241,7 @@ export class AuthService {
 
     await this.pool.query(
       'UPDATE usuario SET password_hash = ? WHERE id_usuario = ?',
-      [hashPassword(dto.newPassword), user.id],
+      [await hashPassword(dto.newPassword), user.id], // <-- AWAIT AGREGADO
     );
 
     return { message: 'Contraseña actualizada correctamente' };

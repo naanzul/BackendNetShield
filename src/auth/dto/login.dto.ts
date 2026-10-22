@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString } from 'class-validator';
+import { IsEmail, IsString, MaxLength } from 'class-validator';
 
 /**
  * Credenciales para iniciar sesion.
@@ -16,6 +16,7 @@ export class LoginDto {
     format: 'email',
   })
   @IsEmail()
+  @MaxLength(150) // <-- Mitigación #13: Límite de longitud
   email: string | undefined;
 
   /** Contrasena en claro. */
@@ -24,5 +25,6 @@ export class LoginDto {
     example: 'secreto123',
   })
   @IsString()
+  @MaxLength(72) // <-- Mitigación #13: Límite de longitud
   password: string | undefined;
 }

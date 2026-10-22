@@ -1,7 +1,13 @@
+import 'dotenv/config';
 import { Buffer } from 'node:buffer';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto'; // <-- Agregado timingSafeEqual
 
-const SECRET = 'netshield-secret-2026';
+// Se lee la variable de entorno (Mitigación de CWE-798: Hardcoded Credentials)
+const SECRET = process.env.JWT_SECRET;
+
+if (!SECRET) {
+  throw new Error('FATAL: La variable de entorno JWT_SECRET no está definida.');
+}
 
 /**
  * Payload que viaja dentro del token.
@@ -47,7 +53,7 @@ function b64url(json: object): string {
  * @returns La firma en base64url.
  */
 function hmac(data: string): string {
-  return createHmac('sha256', SECRET).update(data).digest('base64url');
+  return createHmac('sha256', SECRET as string).update(data).digest('base64url');
 }
 
 /**
@@ -90,23 +96,50 @@ export function sign(
  * @returns El payload si es valido, `null` en cualquier otro caso.
  */
 export function verify(token: string): JwtPayload | null {
-  const [header, body, signature] = token.split('.');
+  const parts = token.split('.');
 
-  if (!header || !body || !signature) {
+  // MITIGACIÓN #11: Validar que el token tenga exactamente 3 partes (header, body, signature)
+  if (parts.length !== 3) {
     return null;
   }
 
-  if (hmac(`${header}.${body}`) !== signature) {
+  const [header, body, signature] = parts;
+
+  // MITIGACIÓN #11: Validar que el algoritmo sea HS256 (evita ataque 'alg: none')
+  try {
+    const decodedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (decodedHeader.alg !== 'HS256') {
+      return null;
+    }
+  } catch {
     return null;
   }
 
-  const payload = JSON.parse(
-    Buffer.from(body, 'base64url').toString(),
-  ) as JwtPayload;
+  // MITIGACIÓN #10: Comparación en tiempo constante para evitar Timing Attacks
+  const expectedSignature = hmac(`${header}.${body}`);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const actualBuffer = Buffer.from(signature);
 
-  if (payload.exp < now()) {
+  if (expectedBuffer.length !== actualBuffer.length) {
     return null;
   }
 
-  return payload;
+  if (!timingSafeEqual(expectedBuffer, actualBuffer)) {
+    return null;
+  }
+
+  // Validación del payload con manejo de errores (evita que un JSON malformado tumbe el servidor)
+  try {
+    const payload = JSON.parse(
+      Buffer.from(body, 'base64url').toString(),
+    ) as JwtPayload;
+
+    if (payload.exp < now()) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
 }

@@ -32,12 +32,6 @@ import { ReportsService } from './reports.service';
 
 /**
  * Endpoints de gestion de reportes del usuario autenticado.
- *
- * Cada usuario solo ve y modifica sus propios reportes. Un reporte se
- * puede editar o borrar mientras este en estado `pendiente` o
- * `en_revision`; una vez aprobado o rechazado, queda bloqueado.
- *
- * Todas las rutas requieren token de usuario (no admin).
  */
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -54,13 +48,6 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
-  /**
-   * Crea un reporte de sitio sospechoso.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param dto - URL, categoria y descripcion del reporte.
-   * @returns El reporte creado, ya con `id` y `createdAt`.
-   */
   @Post()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({
@@ -100,12 +87,6 @@ export class ReportsController {
     return this.reports.create(req.userId, dto);
   }
 
-  /**
-   * Lista los reportes del usuario autenticado.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @returns Lista de reportes ordenada por fecha descendente.
-   */
   @Get()
   @ApiOperation({
     summary: 'Listar mis reportes',
@@ -132,13 +113,6 @@ export class ReportsController {
     return this.reports.findAll(req.userId);
   }
 
-  /**
-   * Devuelve un reporte del usuario.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador del reporte.
-   * @returns El reporte si es del usuario.
-   */
   @Get(':id')
   @ApiOperation({
     summary: 'Ver un reporte mio',
@@ -160,6 +134,10 @@ export class ReportsController {
     },
   })
   @ApiResponse({
+    status: 400,
+    description: 'El ID enviado no es un número válido', // <-- Mitigación #19
+  })
+  @ApiResponse({
     status: 404,
     description: 'No existe el reporte o no pertenece al usuario',
   })
@@ -167,14 +145,6 @@ export class ReportsController {
     return this.reports.findOne(req.userId, id);
   }
 
-  /**
-   * Edita la descripcion de un reporte.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador del reporte.
-   * @param dto - Nueva descripcion.
-   * @returns El reporte actualizado.
-   */
   @Patch(':id')
   @ApiOperation({
     summary: 'Editar la descripcion de un reporte',
@@ -213,12 +183,6 @@ export class ReportsController {
     return this.reports.update(req.userId, id, dto.description);
   }
 
-  /**
-   * Elimina un reporte.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador del reporte.
-   */
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({
@@ -243,14 +207,6 @@ export class ReportsController {
     return this.reports.remove(req.userId, id);
   }
 
-  /**
-   * Sube una evidencia fotografica a un reporte.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador del reporte.
-   * @param file - Archivo de imagen (multipart/form-data).
-   * @returns El reporte actualizado con la nueva evidencia.
-   */
   @Post(':id/evidence')
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @ApiOperation({
@@ -301,7 +257,7 @@ export class ReportsController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Ya hay 5 evidencias en este reporte',
+    description: 'Ya hay 5 evidencias en este reporte', // <-- Mitigación #15
   })
   @ApiResponse({
     status: 429,
@@ -316,13 +272,6 @@ export class ReportsController {
     return this.reports.addEvidence(req.userId, id, file);
   }
 
-  /**
-   * Lista las evidencias de un reporte.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador del reporte.
-   * @returns Lista de evidencias con su URL publica.
-   */
   @Get(':id/evidence')
   @ApiOperation({
     summary: 'Consultar las evidencias de un reporte mio',
@@ -339,6 +288,10 @@ export class ReportsController {
     },
   })
   @ApiResponse({
+    status: 400,
+    description: 'El ID enviado no es un número válido', // <-- Mitigación #19
+  })
+  @ApiResponse({
     status: 404,
     description: 'No existe el reporte o no pertenece al usuario',
   })
@@ -349,9 +302,6 @@ export class ReportsController {
 
 /**
  * Endpoints para eliminar evidencias individuales.
- *
- * Un usuario solo puede borrar sus propias evidencias, y solo si el
- * reporte al que pertenecen sigue en estado `pendiente` o `en_revision`.
  */
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -368,12 +318,6 @@ export class ReportsController {
 export class EvidenceController {
   constructor(private readonly reports: ReportsService) {}
 
-  /**
-   * Elimina una evidencia.
-   *
-   * @param req - Peticion con el `userId` inyectado por el guard.
-   * @param id - Identificador de la evidencia.
-   */
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({
@@ -385,6 +329,10 @@ export class EvidenceController {
   @ApiResponse({
     status: 204,
     description: 'Evidencia eliminada; sin cuerpo',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El ID enviado no es un número válido', // <-- Mitigación #19
   })
   @ApiResponse({
     status: 403,
