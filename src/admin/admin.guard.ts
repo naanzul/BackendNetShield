@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
+import { extractBearerToken } from '../auth/bearer';
 import { verify } from '../auth/jwt';
-
+ 
 export type AdminRequest = Request & { adminId: number };
-
 /**
  * Guard que protege rutas exclusivas de administradores.
  *
@@ -41,14 +41,9 @@ export class AdminGuard implements CanActivate {
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AdminRequest>();
-    const header = request.headers.authorization;
-    const token =
-      typeof header === 'string' && header.startsWith('Bearer ')
-        ? header.slice(7)
-        : null;
-
-    const payload = token ? verify(token) : null;
-
+    const token = extractBearerToken(request);
+    const payload = verify(token);
+ 
     if (!payload || payload.type !== 'access') {
       throw new UnauthorizedException('Token inválido o expirado');
     }
