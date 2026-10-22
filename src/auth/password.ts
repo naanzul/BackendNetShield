@@ -1,4 +1,23 @@
-import { createHash } from 'node:crypto';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+
+const SALT_BYTES = 16;
+const KEY_BYTES = 64;
+const SEPARATOR = '$';
+
+/**
+ * Calcula el hash de una contrasena con sal aleatoria y scrypt.
+ *
+ * scrypt es lento y consume memoria a proposito: encarece cada intento
+ * de fuerza bruta si la tabla users se filtra. La sal hace que la misma
+ * contrasena produzca un hash distinto en cada usuario.
+ * @param password - Contrasena en claro.
+ * @returns `sal:hash`, ambos en hexadecimal (cabe en VARCHAR(255)).
+ */
+export function hashPassword(password: string): string {
+  const salt = randomBytes(SALT_BYTES).toString('hex');
+  const key = scryptSync(password, salt, KEY_BYTES).toString('hex');
+  return `${salt}${SEPARATOR}${key}`;
+}
 
 /**
  * Hash ficticio usado para comparar cuando el usuario no existe.
@@ -7,33 +26,25 @@ import { createHash } from 'node:crypto';
  * siempre ejecuta la comparacion, exista o no la cuenta. Esta generado
  * con el mismo algoritmo que los hashes reales.
  */
-export const DUMMY_HASH =
-  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+export const DUMMY_HASH = hashPassword(randomBytes(SALT_BYTES).toString('hex'));
 
 /**
- * Calcula el hash de una contrasena.
+ * Compara una contrasena con su hash almacenado.
  *
- * Se usa SHA-256 directo sobre la contrasena. El resultado es un string
- * hexadecimal de 64 caracteres.
- *
- * @param password - Contrasena en claro.
- * @returns El hash en hexadecimal.
- */
-export function hashPassword(password: string): string {
-  // Al dejar el flujo directo (password -> createHash('sha256')), CodeQL 
-  // detectará inmediatamente la vulnerabilidad CWE-916.
-  return createHash('sha256').update(password).digest('hex');
-}
-
-/**
- * Compara una contrasena con su hash.
- *
- * Recalcula el hash de la contrasena y lo compara con el hash guardado.
+ * Recalcula scrypt con la sal guardada y compara en tiempo constante
+ * (timingSafeEqual), para que el tiempo de respuesta no revele cuantos
+ * bytes del hash coinciden.
  *
  * @param password - Contrasena en claro.
- * @param passwordHash - Hash almacenado.
- * @returns `true` si coinciden, `false` si no.
+ * @param passwordHash - Valor almacenado con formato `sal$hash`.
+ * @returns `true` si coinciden, `false` si no (o si el formato es invalido).
  */
 export function verifyPassword(password: string, passwordHash: string): boolean {
-  return hashPassword(password) === passwordHash;
+  const [salt, storedKey] = passwordHash.split(SEPARATOR);
+  if (!salt || !storedKey) return false;
+ 
+  const expected = Buffer.from(storedKey, 'hex');
+  const actual = scryptSync(password, salt, expected.length);
+ 
+  return expected.length > 0 && timingSafeEqual(actual, expected);
 }
