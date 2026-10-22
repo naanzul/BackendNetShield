@@ -3,21 +3,22 @@ import type { Request } from 'express';
 import { randomBytes } from 'node:crypto';
 import { closeSync, mkdirSync, openSync, readSync, unlinkSync } from 'node:fs';
 import { diskStorage } from 'multer';
-import { extname, join, resolve } from 'node:path';
-
+import { extname, join, resolve, sep } from 'node:path';
+ 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
 };
-
+ 
 const UPLOADS_DIR = resolve(process.cwd(), 'uploads');
-
+const MAGIC_BYTES_LENGTH = 12;
+ 
 /** Configuración de multer: carpeta, tamaño máximo en MB y solo imágenes. */
 export function imageUpload(folder: string, maxMb: number) {
   const dir = join(UPLOADS_DIR, folder);
   mkdirSync(dir, { recursive: true });
-
+ 
   return {
     storage: diskStorage({
       destination: dir,
@@ -31,13 +32,19 @@ export function imageUpload(folder: string, maxMb: number) {
         : cb(new BadRequestException('Solo se permiten imágenes JPG, PNG o WEBP'), false),
   };
 }
-
+ 
 function detect(path: string): string | null {
-  const fd = openSync(path, 'r');
-  const buf = Buffer.alloc(12);
-  readSync(fd, buf, 0, 12, 0);
-  closeSync(fd);
-
+  const full = resolve(path);
+  if (!full.startsWith(UPLOADS_DIR + sep)) return null;
+ 
+  const fd = openSync(full, 'r');
+  const buf = Buffer.alloc(MAGIC_BYTES_LENGTH);
+  try {
+    readSync(fd, buf, 0, MAGIC_BYTES_LENGTH, 0);
+  } finally {
+    closeSync(fd);
+  }
+ 
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
   if (buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) return 'png';
   if (buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') {
@@ -45,11 +52,11 @@ function detect(path: string): string | null {
   }
   return null;
 }
-
+ 
 /** Comprueba el contenido real del archivo y devuelve su ruta pública. */
 export function validateImage(file: Express.Multer.File | undefined, folder: string): string {
   if (!file) throw new BadRequestException('Archivo inválido o faltante');
-
+ 
   const kind = detect(file.path);
   if (!kind || kind !== extname(file.filename).slice(1)) {
     removeFile(file.path);
@@ -57,17 +64,24 @@ export function validateImage(file: Express.Multer.File | undefined, folder: str
   }
   return `/uploads/${folder}/${file.filename}`;
 }
-
+ 
+/**
+ * Borra un archivo. La contención en uploads/ se verifica aquí, justo antes
+ * de unlinkSync: ninguna ruta que salga de uploads/ puede llegar al borrado.
+ * El `+ sep` evita que /app/uploads-secret pase como si estuviera en /app/uploads.
+ */
 export function removeFile(path: string) {
+  const full = resolve(path);
+  if (!full.startsWith(UPLOADS_DIR + sep)) return;
+ 
   try {
-    unlinkSync(path);
+    unlinkSync(full);
   } catch {
     /* ya no existe */
   }
 }
-
+ 
 /** Borra un archivo a partir de su ruta pública, sin salir de uploads/. */
 export function removeUpload(publicPath: string) {
-  const full = resolve(process.cwd(), '.' + publicPath.replace(/\\/g, '/'));
-  if (full.startsWith(UPLOADS_DIR)) removeFile(full);
+  removeFile(resolve(process.cwd(), '.' + publicPath.replace(/\\/g, '/')));
 }
