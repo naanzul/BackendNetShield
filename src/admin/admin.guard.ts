@@ -12,6 +12,7 @@ import { extractBearerToken } from '../auth/bearer';
 import { verify } from '../auth/jwt';
  
 export type AdminRequest = Request & { adminId: number };
+
 /**
  * Guard que protege rutas exclusivas de administradores.
  *
@@ -42,6 +43,13 @@ export class AdminGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AdminRequest>();
     const token = extractBearerToken(request);
+
+    // 1. Validamos que el token exista (Soluciona el error de TypeScript)
+    if (!token) {
+      throw new UnauthorizedException('Token no proporcionado');
+    }
+
+    // 2. Ahora TypeScript sabe que 'token' es un string seguro
     const payload = verify(token);
  
     if (!payload || payload.type !== 'access') {
