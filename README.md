@@ -247,10 +247,3 @@ npm run test:e2e    # pruebas de extremo a extremo
 | `Unknown database` / `Table doesn't exist` | falta crear o importar el esquema | ejecutar `schema.sql` |
 | La app dice "no se pudo conectar" | IP o puerto incorrectos, o firewall en el 3000 | revisar la IP de la API y abrir el puerto 3000 |
 
-## 12. Pendientes y mejoras
-
-- [ ] Pasar todas las credenciales a variables de entorno
-- [ ] HTTPS dentro de la LAN
-- [ ] Revocación de tokens al cerrar sesión
-- [ ] Restringir CORS y privilegios de MySQL
-- [ ] **[Agregar los pendientes del equipo]**
